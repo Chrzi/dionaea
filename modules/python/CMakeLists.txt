@@ -137,6 +137,7 @@ install_available_python_config(
         fail2ban.yaml.in
         ftp.yaml
         hpfeeds.yaml
+        nsq.yaml
         log_db_sql.yaml.in
         log_incident.yaml.in
         log_json.yaml.in

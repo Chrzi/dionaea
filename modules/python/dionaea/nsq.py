@@ -18,13 +18,13 @@ from time import gmtime, strftime
 import gnsq
 
 logger = logging.getLogger('nsqp')
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
-# def DEBUGPERF(msg):
-#	print(msg)
-# logger.debug = DEBUGPERF
-# logger.critical = DEBUGPERF
+#def DEBUGPERF(msg):
+#    print(msg)
+#logger.debug = DEBUGPERF
+#logger.critical = DEBUGPERF
 
 
 class NSQHandlerLoader(IHandlerLoader):
@@ -55,15 +55,18 @@ class nsqihandler(ihandler):
         self.tls = config.get('tls')
         auth = config.get('auth')
 
+        logger.info("Using server {} with topic {} and tls {}".format(servers, self.topic, self.tls))
         self.producer = gnsq.Producer(servers, tls_v1=self.tls, auth_secret=auth)
 
     def stop(self):
         if self.connected:
+            logger.info("Stopping producer.")
             self.producer.join()
             self.connected = False
 
     def publish(self, topic, **kwargs):
         if not self.connected:
+            logger.info("Starting producer.")
             self.producer.start()
             self.connected = True
         self.producer.publish(topic, json.dumps(kwargs).encode('utf-8'), block=True, timeout=5)
@@ -93,7 +96,7 @@ class nsqihandler(ihandler):
                 local_port=con.local.port
             )
         except Exception as e:
-            logger.warn('exception when publishing: {0}'.format(e))
+            logger.warning('exception when publishing: {0}'.format(e))
 
     def handle_incident(self, i):
         pass
@@ -160,7 +163,7 @@ class nsqihandler(ihandler):
         try:
             self.sendfile(i.file)
         except Exception as e:
-            logger.warn('exception when publishing: {0}'.format(e))
+            logger.warning('exception when publishing: {0}'.format(e))
 
     def handle_incident_dionaea_download_complete_again(self, i):
         if not hasattr(i, 'con'):
@@ -182,7 +185,7 @@ class nsqihandler(ihandler):
                 url=i.url
             )
         except Exception as e:
-            logger.warn('exception when publishing: {0}'.format(e))
+            logger.warning('exception when publishing: {0}'.format(e))
 
     def handle_incident_dionaea_modules_python_smb_dcerpc_request(self, i):
         if not hasattr(i, 'con'):
@@ -200,7 +203,7 @@ class nsqihandler(ihandler):
                 dport=str(i.con.local.port)
             )
         except Exception as e:
-            logger.warn('exception when publishing: {0}'.format(e))
+            logger.warning('exception when publishing: {0}'.format(e))
 
     def handle_incident_dionaea_module_emu_profile(self, icd):
         if not hasattr(icd, 'con'):
@@ -209,4 +212,4 @@ class nsqihandler(ihandler):
         try:
             self.publish(self.topic, icd=icd.origin, profile=icd.profile)
         except Exception as e:
-            logger.warn('exception when publishing: {0}'.format(e))
+            logger.warning('exception when publishing: {0}'.format(e))

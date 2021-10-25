@@ -3,6 +3,8 @@
 # SPDX-FileCopyrightText: 2010 Mark Schloesser
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
+import asyncio
+import threading
 
 from dionaea import IHandlerLoader, Timer
 from dionaea.core import ihandler, incident, g_dionaea, connection
@@ -15,10 +17,11 @@ import hashlib
 import json
 import datetime
 from time import gmtime, strftime
-import gnsq
+import nsq
+import tornado
 
-logger = logging.getLogger('nsqp')
-logger.setLevel(logging.INFO)
+logger = logging.getLogger('nsq')
+logger.setLevel(logging.DEBUG)
 
 
 #def DEBUGPERF(msg):
@@ -47,29 +50,51 @@ class nsqihandler(ihandler):
 
     def __init__(self, path, config=None):
         logger.debug('nsqhandler  init')
+
+        logger.debug("getting config")
         servers = config.get('servers')
-        self.connected = False
         self.ownip = config.get('own_ip', '')
         self.topic = config.get('topic', 'dionaea')
         self.topic_files = config.get('topic_files', 'dionaea.files')
-        self.tls = config.get('tls')
-        auth = config.get('auth')
+        self.tls = config.get('tls') == 'True'
+        auth = config.get('auth', '')
+        logger.debug("got config")
+        logger.debug("Using server {} with topic {} and tls {}".format(servers, self.topic, self.tls))
 
-        logger.info("Using server {} with topic {} and tls {}".format(servers, self.topic, self.tls))
-        self.producer = gnsq.Producer(servers, tls_v1=self.tls, auth_secret=auth)
+        self.writer: nsq.Writer
+
+        def run():
+            # Create new event loop and start it manually
+            # tornado.ioloop.IOLoop.current() should create a new asyncio event loop, but nope
+            # Because this is in a new Thread, this thread has no event loop
+            l = asyncio.new_event_loop()
+            asyncio.set_event_loop(l)
+
+            # Use the newly created asyncio event loop and create a tornado ioloop based on that
+            loop = tornado.ioloop.IOLoop.current()
+            loop.make_current()
+
+            if auth == '':
+                logger.debug("Auth is not set")
+                self.writer = nsq.Writer(servers, tls_v1=self.tls)
+            else:
+                logger.debug("Auth is set")
+                self.writer = nsq.Writer(servers, tls_v1=self.tls, auth_secret=auth.encode('utf-8'))
+            # start the loop, not calling nsq.run() because registering handlers for Signals is not supported other than
+            # in the main thread
+            loop.start()
+
+        ihandler.__init__(self, path)
+        self.thread = threading.Thread(target=run).start()
 
     def stop(self):
-        if self.connected:
-            logger.info("Stopping producer.")
-            self.producer.join()
-            self.connected = False
+        logger.info("Stopping producer.")
+        self.writer.io_loop.stop()
 
     def publish(self, topic, **kwargs):
-        if not self.connected:
-            logger.info("Starting producer.")
-            self.producer.start()
-            self.connected = True
-        self.producer.publish(topic, json.dumps(kwargs).encode('utf-8'), block=True, timeout=5)
+        msg = json.dumps(kwargs)
+        logger.debug("Pub {}".format(msg))
+        self.writer.pub(topic, str.encode(msg, "utf-8"))
 
     def _ownip(self, icd):
         if self.ownip:
@@ -96,7 +121,7 @@ class nsqihandler(ihandler):
                 local_port=con.local.port
             )
         except Exception as e:
-            logger.warning('exception when publishing: {0}'.format(e))
+            logger.warning('exception when publishing', exc_info=e)
 
     def handle_incident(self, i):
         pass

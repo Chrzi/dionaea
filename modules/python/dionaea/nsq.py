@@ -3,6 +3,7 @@
 # SPDX-FileCopyrightText: 2010 Mark Schloesser
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
+import ast
 import asyncio
 import base64
 import threading
@@ -51,7 +52,7 @@ class nsqihandler(ihandler):
         logger.debug('nsqhandler  init')
 
         logger.debug("getting config")
-        servers = config.get('servers')
+        servers = ast.literal_eval(config.get('servers'))
         self.ownip = config.get('own_ip', '')
         self.topic = config.get('topic', 'dionaea')
         self.topic_files = config.get('topic_files', 'dionaea.files')

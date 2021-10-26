@@ -4,6 +4,7 @@
 #
 # SPDX-License-Identifier: GPL-2.0-or-later
 import asyncio
+import base64
 import threading
 
 from dionaea import IHandlerLoader, Timer
@@ -23,6 +24,7 @@ import tornado
 logger = logging.getLogger('nsq')
 logger.setLevel(logging.DEBUG)
 
+MAX_SIZE=10 * 1024 * 1024
 
 #def DEBUGPERF(msg):
 #    print(msg)
@@ -228,12 +230,28 @@ class nsqihandler(ihandler):
                     (con.remote.host, con.remote.port, self._ownip(icd), con.local.port))
 
     def handle_incident_dionaea_download_complete_unique(self, i):
-        self.handle_incident_dionaea_download_complete_again(i)
         if not hasattr(i, 'con'):
             return
         logger.debug('unique complete, publishing md5 {0}, path {1}'.format(i.md5hash, i.file))
         try:
-            self.sendfile(i.file)
+            size = os.path.getsize(i.file)
+            fh = open(i.file, 'rb')
+            buf = fh.read(MAX_SIZE)
+
+            sha512 = sha512file(i.file)
+            self.publish(
+                self.topic,
+                icd=i.origin,
+                src_addr=i.con.remote.host,
+                src_port=str(i.con.remote.port),
+                dst_addr=self._ownip(i),
+                dst_port=str(i.con.local.port),
+                url=i.url,
+                md5=i.md5hash,
+                sha512=sha512,
+                size=size,
+                data=base64.b64encode(buf).decode("ascii")
+            )
         except Exception as e:
             logger.warning('exception when publishing: {0}'.format(e))
 

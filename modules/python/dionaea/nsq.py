@@ -105,20 +105,67 @@ class nsqihandler(ihandler):
         # self.client.close()
         pass
 
+    def _prepare_value(self, v):
+        """
+        Prepare value to be JSON compatible.
+
+        :param v: The value to prepare.
+        :return: The prepared value
+        """
+        if isinstance(v, bytes):
+            return v.decode(encoding="utf-8", errors="replace")
+        return v
+
     def connection_publish(self, icd, con_type):
         try:
             con = icd.con
             self.publish(
                 self.topic,
                 icd=icd.origin,
-                connection_type=con_type,
-                connection_transport=con.transport,
-                connection_protocol=con.protocol,
-                remote_host=con.remote.host,
-                remote_port=con.remote.port,
-                remote_hostname=con.remote.hostname,
-                local_host=self._ownip(icd),
-                local_port=con.local.port
+                con_type=con_type,
+                con_transport=con.transport,
+                con_protocol=con.protocol,
+                saddr=con.remote.host,
+                sport=con.remote.port,
+                sname=con.remote.hostname,
+                daddr=self._ownip(icd),
+                dport=con.local.port
+            )
+        except Exception as e:
+            logger.warning('exception when publishing', exc_info=e)
+
+    def command_serialize(self, icd, cmd, args):
+        con = icd.con
+        data = {
+            "icd": icd.origin,
+            "con_transport": con.transport,
+            "con_protocol": con.protocol,
+            "saddr": con.remote.host,
+            "sport": con.remote.port,
+            "sname": con.remote.hostname,
+            "daddr": self._ownip(icd),
+            "dport": con.local.port,
+            "cmd": cmd
+        }
+        if args:
+            data["args"] = args
+        return data
+
+    def login_publish(self, icd):
+        try:
+            con = icd.con
+            self.publish(
+                self.topic,
+                icd=icd.origin,
+                con_transport=con.transport,
+                con_protocol=con.protocol,
+                saddr=con.remote.host,
+                sport=con.remote.port,
+                sname=con.remote.hostname,
+                daddr=self._ownip(icd),
+                dport=con.local.port,
+                username=self._prepare_value(icd.username),
+                pasword=self._prepare_value(icd.password)
             )
         except Exception as e:
             logger.warning('exception when publishing', exc_info=e)
@@ -238,3 +285,39 @@ class nsqihandler(ihandler):
             self.publish(self.topic, icd=icd.origin, profile=icd.profile)
         except Exception as e:
             logger.warning('exception when publishing: {0}'.format(e))
+
+    def handle_incident_dionaea_modules_python_mssql_login(self, icd):
+        if not hasattr(icd, 'con'):
+            return
+        self.login_publish(icd)
+
+    def handle_incident_dionaea_modules_python_mssql_cmd(self, icd):
+        if not hasattr(icd, 'con'):
+            return
+        data = self.command_serialize(icd, icd.cmd, None)
+        self.publish(self.topic, **data)
+
+    def handle_incident_dionaea_modules_python_mysql_login(self, icd):
+        if not hasattr(icd, 'con'):
+            return
+        self.login_publish(icd)
+
+    def handle_incident_dionaea_modules_python_mysql_command(self, icd):
+        if not hasattr(icd, 'con'):
+            return
+        if hasattr(icd, 'args'):
+            data = self.command_serialize(icd, icd.cmd, icd.args)
+        else:
+            data = self.command_serialize(icd, icd.command, None)
+        self.publish(self.topic, **data)
+
+    def handle_incident_dionaea_modules_python_ftp_login(self, icd):
+        if not hasattr(icd, 'con'):
+            return
+        self.login_publish(icd)
+
+    def handle_incident_dionaea_modules_python_ftp_command(self, icd):
+        if not hasattr(icd, 'con'):
+            return
+        data = self.command_serialize(icd, icd.command, icd.arguments)
+        self.publish(self.topic, **data)

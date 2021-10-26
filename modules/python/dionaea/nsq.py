@@ -15,7 +15,7 @@ import logging
 import struct
 import hashlib
 import json
-import datetime
+from datetime import datetime
 from time import gmtime, strftime
 import nsq
 import tornado
@@ -39,11 +39,8 @@ class NSQHandlerLoader(IHandlerLoader):
         return [handler]
 
 
-def timestr():
-    dt = datetime.datetime.now()
-    my_time = dt.strftime("%Y-%m-%d %H:%M:%S.%f")
-    timezone = strftime("%Z %z", gmtime())
-    return my_time + " " + timezone
+def time():
+    return datetime.utcnow().isoformat()
 
 
 class nsqihandler(ihandler):
@@ -92,6 +89,7 @@ class nsqihandler(ihandler):
         self.writer.io_loop.stop()
 
     def publish(self, topic, **kwargs):
+        kwargs["time"] = time()
         msg = json.dumps(kwargs)
         logger.debug("Pub {}".format(msg))
         self.writer.pub(topic, str.encode(msg, "utf-8"))
@@ -114,6 +112,8 @@ class nsqihandler(ihandler):
         """
         if isinstance(v, bytes):
             return v.decode(encoding="utf-8", errors="replace")
+        elif isinstance(v, list) and len(v) > 0 and isinstance(v[0], bytes):
+            return [x.decode(encoding="utf-8", errors="replace") for x in v]
         return v
 
     def connection_publish(self, icd, con_type):
@@ -125,11 +125,11 @@ class nsqihandler(ihandler):
                 con_type=con_type,
                 con_transport=con.transport,
                 con_protocol=con.protocol,
-                saddr=con.remote.host,
-                sport=con.remote.port,
-                sname=con.remote.hostname,
-                daddr=self._ownip(icd),
-                dport=con.local.port
+                src_addr=con.remote.host,
+                src_port=con.remote.port,
+                src_name=con.remote.hostname,
+                dst_addr=self._ownip(icd),
+                dst_dport=con.local.port
             )
         except Exception as e:
             logger.warning('exception when publishing', exc_info=e)
@@ -140,15 +140,15 @@ class nsqihandler(ihandler):
             "icd": icd.origin,
             "con_transport": con.transport,
             "con_protocol": con.protocol,
-            "saddr": con.remote.host,
-            "sport": con.remote.port,
-            "sname": con.remote.hostname,
-            "daddr": self._ownip(icd),
-            "dport": con.local.port,
-            "cmd": cmd
+            "src_addr": con.remote.host,
+            "src_port": con.remote.port,
+            "src_name": con.remote.hostname,
+            "dst_addr": self._ownip(icd),
+            "dst_port": con.local.port,
+            "cmd": self._prepare_value(cmd)
         }
         if args:
-            data["args"] = args
+            data["args"] = self._prepare_value(args)
         return data
 
     def login_publish(self, icd):
@@ -159,11 +159,11 @@ class nsqihandler(ihandler):
                 icd=icd.origin,
                 con_transport=con.transport,
                 con_protocol=con.protocol,
-                saddr=con.remote.host,
-                sport=con.remote.port,
-                sname=con.remote.hostname,
-                daddr=self._ownip(icd),
-                dport=con.local.port,
+                src_addr=con.remote.host,
+                src_port=con.remote.port,
+                src_name=con.remote.hostname,
+                dst_addr=self._ownip(icd),
+                dst_port=con.local.port,
                 username=self._prepare_value(icd.username),
                 pasword=self._prepare_value(icd.password)
             )
@@ -242,16 +242,14 @@ class nsqihandler(ihandler):
             return
         logger.debug('hash complete, publishing md5 {0}, path {1}'.format(i.md5hash, i.file))
         try:
-            tstamp = timestr()
             sha512 = sha512file(i.file)
             self.publish(
                 self.topic,
                 icd=i.origin,
-                time=tstamp,
-                saddr=i.con.remote.host,
-                sport=str(i.con.remote.port),
-                daddr=self._ownip(i),
-                dport=str(i.con.local.port),
+                src_addr=i.con.remote.host,
+                src_port=str(i.con.remote.port),
+                dst_addr=self._ownip(i),
+                dst_port=str(i.con.local.port),
                 md5=i.md5hash,
                 sha512=sha512,
                 url=i.url
@@ -269,10 +267,10 @@ class nsqihandler(ihandler):
                 icd=i.origin,
                 uuid=i.uuid,
                 opnum=i.opnum,
-                saddr=i.con.remote.host,
-                sport=str(i.con.remote.port),
-                daddr=self._ownip(i),
-                dport=str(i.con.local.port)
+                src_addr=i.con.remote.host,
+                src_port=str(i.con.remote.port),
+                dst_addr=self._ownip(i),
+                dst_port=str(i.con.local.port)
             )
         except Exception as e:
             logger.warning('exception when publishing: {0}'.format(e))

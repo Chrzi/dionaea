@@ -230,6 +230,12 @@ class nsqihandler(ihandler):
         logger.info("pending connection from %s:%i to %s:%i" %
                     (con.remote.host, con.remote.port, self._ownip(icd), con.local.port))
 
+    def handle_incident_dionaea_connection_free(self, icd):
+        self.connection_publish(icd, 'free')
+        con = icd.con
+        logger.info("freed connection from %s:%i to %s:%i" %
+                    (con.remote.host, con.remote.port, self._ownip(icd), con.local.port))
+
     def handle_incident_dionaea_download_complete_unique(self, i):
         if not hasattr(i, 'con'):
             return

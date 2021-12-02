@@ -98,7 +98,7 @@ class nsqihandler(ihandler):
         wrapped = json.dumps({
             "seq": self.seq,
             "connection": str(self.uuid),
-            "data": base64.b64encode(msg.encode("utf-8", errors="ignore"))
+            "data": base64.b64encode(msg.encode("utf-8", errors="ignore")).decode("ascii")
         })
         self.seq += 1
         self.writer.pub(topic, wrapped.encode())

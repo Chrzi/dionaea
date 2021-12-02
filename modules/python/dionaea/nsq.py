@@ -14,18 +14,17 @@ from dionaea.util import sha512file
 
 import os
 import logging
-import struct
-import hashlib
 import json
 from datetime import datetime
-from time import gmtime, strftime
 import nsq
 import tornado
+import uuid
 
 logger = logging.getLogger('nsq')
 logger.setLevel(logging.DEBUG)
 
-MAX_SIZE=10 * 1024 * 1024
+MAX_SIZE = 10 * 1024 * 1024
+
 
 #def DEBUGPERF(msg):
 #    print(msg)
@@ -60,6 +59,8 @@ class nsqihandler(ihandler):
         auth = config.get('auth', '')
         logger.debug("got config")
         logger.debug("Using server {} with topic {} and tls {}".format(servers, self.topic, self.tls))
+        self.seq = 0
+        self.uuid = uuid.uuid4()
 
         self.writer: nsq.Writer
 
@@ -94,8 +95,13 @@ class nsqihandler(ihandler):
     def publish(self, topic, **kwargs):
         kwargs["time"] = time()
         msg = json.dumps(kwargs)
-        logger.debug("Pub {}".format(msg))
-        self.writer.pub(topic, str.encode(msg, "utf-8"))
+        wrapped = json.dumps({
+            "seq": self.seq,
+            "connection": str(self.uuid),
+            "data": base64.b64encode(msg.encode("utf-8", errors="ignore"))
+        })
+        self.seq += 1
+        self.writer.pub(topic, wrapped.encode())
 
     def _ownip(self, icd):
         if self.ownip:

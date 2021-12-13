@@ -311,7 +311,15 @@ class nsqihandler(ihandler):
             return
         logger.debug('emu profile, publishing length {0}'.format(len(icd.profile)))
         try:
-            self.publish(self.topic, icd=icd.origin, profile=icd.profile)
+            self.publish(
+                self.topic,
+                icd=icd.origin,
+                src_addr=con.remote.host,
+                src_port=con.remote.port,
+                dst_addr=self._ownip(icd),
+                dst_port=con.local.port,
+                profile=icd.profile
+            )
         except Exception as e:
             logger.warning('exception when publishing: {0}'.format(e))
 

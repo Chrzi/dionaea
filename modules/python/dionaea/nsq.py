@@ -174,7 +174,7 @@ class nsqihandler(ihandler):
                 dst_addr=self._ownip(icd),
                 dst_port=con.local.port,
                 username=self._prepare_value(icd.username),
-                pasword=self._prepare_value(icd.password)
+                password=self._prepare_value(icd.password)
             )
         except Exception as e:
             logger.warning('exception when publishing', exc_info=e)

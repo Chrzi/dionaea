@@ -54,13 +54,13 @@ class nsqihandler(ihandler):
         servers = ast.literal_eval(config.get('servers'))
         self.ownip = config.get('own_ip', '')
         self.topic = config.get('topic', 'dionaea')
-        self.topic_files = config.get('topic_files', 'dionaea.files')
         self.tls = config.get('tls') == 'True'
         auth = config.get('auth', '')
         logger.debug("got config")
         logger.debug("Using server {} with topic {} and tls {}".format(servers, self.topic, self.tls))
         self.seq = 0
         self.uuid = uuid.uuid4()
+        self.seq_lock = threading.Lock()
 
         self.writer: nsq.Writer
 
@@ -95,12 +95,15 @@ class nsqihandler(ihandler):
     def publish(self, topic, **kwargs):
         kwargs["time"] = time()
         msg = json.dumps(kwargs)
+        with self.seq_lock:
+            seq = self.seq
+            self.seq += 1
+
         wrapped = json.dumps({
-            "seq": self.seq,
+            "seq": seq,
             "connection": str(self.uuid),
             "data": base64.b64encode(msg.encode("utf-8", errors="ignore")).decode("ascii")
         })
-        self.seq += 1
         self.writer.pub(topic, wrapped.encode())
 
     def _ownip(self, icd):
@@ -314,10 +317,10 @@ class nsqihandler(ihandler):
             self.publish(
                 self.topic,
                 icd=icd.origin,
-                src_addr=con.remote.host,
-                src_port=con.remote.port,
+                src_addr=icd.con.remote.host,
+                src_port=icd.con.remote.port,
                 dst_addr=self._ownip(icd),
-                dst_port=con.local.port,
+                dst_port=icd.con.local.port,
                 profile=icd.profile
             )
         except Exception as e:

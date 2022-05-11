@@ -196,6 +196,7 @@ class hpclient(connection):
                 self.send(m)
 
     def publish(self, channel, **kwargs):
+        kwargs['time'] = datetime.datetime.utcnow().isoformat()
         if self.filehandle or not self.authenticated:
             if len(self.msgqueue) >= self.queueMax:
                 logger.warning('Discarding message because queue is full!')
